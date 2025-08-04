@@ -1274,17 +1274,23 @@ class ExecuTorchModelForMultiModalToText(ExecuTorchModelBase):
         cache_position: torch.Tensor,
         input_features: Optional[torch.Tensor] = None,
     ):
-        token_embeddings = self.token_embeddings.forward(input_ids)
-        if input_features:
-            token_embeddings = self.audio_encoder.forward(
-                input_features,
-                token_embeddings,
-                input_ids,
-            )
-        output = self.decoder.forward(
-            token_embeddings,
+        token_embeddings = self.model.run_method("token_embeddings", (input_ids,))[0]
+        if input_features is not None:
+            # token_embeddings = self.model.run_method("audio_encoder", (
+            #     input_features,
+            #     token_embeddings,
+            #     input_ids,
+            # ))[0]
+            audio_embeds = self.model.run_method("audio_encoder",
+                (input_features,)
+            )[0]
+            # audio_token_mask = input_ids == self.config.audio_token_id
+            audio_token_mask = input_ids == 24
+            token_embeddings[audio_token_mask] = audio_embeds
+        output = self.model.run_method("decoder", (
             cache_position,
-        )
+            token_embeddings,
+        ))[0]
         return output
 
     def generate(

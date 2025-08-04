@@ -473,18 +473,19 @@ class VoxtralEncoderExportableModule(torch.nn.Module):
     def forward(
         self,
         input_features: torch.FloatTensor,
-        inputs_embeds: torch.FloatTensor,
-        input_ids: torch.LongTensor,
+        # inputs_embeds: torch.FloatTensor,
+        # input_ids: torch.LongTensor,
     ):
         audio_outputs = self.audio_encoder(input_features)
         audio_hidden_states = audio_outputs.last_hidden_state
         audio_hidden_states = audio_hidden_states.reshape(-1, self.intermediate_size)
         audio_embeds = self.mm_projector(audio_hidden_states)
 
-        audio_token_mask = input_ids == self.audio_token_id
-        inputs_embeds[audio_token_mask] = audio_embeds
+        # audio_token_mask = input_ids == self.audio_token_id
+        # inputs_embeds[audio_token_mask] = audio_embeds
         
-        return inputs_embeds
+        # return inputs_embeds
+        return audio_embeds
     
 
 class MultiModalTextToTextExportableModule(torch.nn.Module):
@@ -703,12 +704,24 @@ class MultiModalTextToTextExportableModule(torch.nn.Module):
                 # self.model.audio_tower.config._attn_implementation = "sdpa_without_vmap"
                 self.model.audio_tower.config._attn_implementation = "custom_sdpa"
                 audio_encoder = VoxtralEncoderExportableModule(self.model)
+                # audio_encoder_exported_program = torch.export.export(
+                #     audio_encoder,
+                #     args=(),
+                #     kwargs=encoder_input_kwargs,
+                #     dynamic_shapes=dynamic_shapes,
+                #     strict=False, 
+                # )
                 audio_encoder_exported_program = torch.export.export(
                     audio_encoder,
-                    args=(),
-                    kwargs=encoder_input_kwargs,
-                    dynamic_shapes=dynamic_shapes,
-                    strict=False,
+                    args=(torch.rand(3, 128, chunk_length),),
+                    dynamic_shapes={
+                        "input_features": {
+                            0: torch.export.Dim("enc_batch_size_dim", min=1, max=max_audio_len//30),
+                            # 1: torch.export.Dim.STATIC,
+                            # 2: torch.export.Dim.STATIC,
+                        },
+                    },
+                    strict=True,
                 )
                 exported_programs["audio_encoder"] = audio_encoder_exported_program
             elif isinstance(self.model, Gemma3ForConditionalGeneration):
