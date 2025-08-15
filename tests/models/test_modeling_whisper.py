@@ -34,10 +34,6 @@ from optimum.utils.import_utils import is_transformers_version
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-@pytest.mark.skipif(
-    is_transformers_version(">", "4.52.4"),
-    reason="Need to fix in the transformers due to attention refactor https://github.com/huggingface/transformers/pull/38235",
-)
 class ExecuTorchModelIntegrationTest(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
