@@ -61,8 +61,6 @@ def load_multimodal_text_to_text_model(model_name_or_path: str, **kwargs):
     attn_implementation = kwargs.get("attn_implementation", "custom_sdpa" if use_custom_sdpa else "sdpa")
     cache_implementation = kwargs.get("cache_implementation", "static")
     use_custom_sdpa = use_custom_sdpa or attn_implementation == "custom_sdpa"
-    qlinear_config = kwargs.get("qlinear", None)
-    qembedding_config = kwargs.get("qembedding", None)
     max_length = kwargs.get("max_length", 2048)
     config = kwargs.get("config") or AutoConfig.from_pretrained(model_name_or_path)
 
@@ -99,57 +97,27 @@ def load_multimodal_text_to_text_model(model_name_or_path: str, **kwargs):
         ),
     )
 
-    # # Make sure model has language_model as well as vision_tower:
-    # if not hasattr(eager_model, "language_model") or not hasattr(eager_model, "vision_tower"):
-    #     raise ValueError(
-    #         f"The model {model_name_or_path} does not have a `language_model` or `vision_tower` attribute. "
-    #         "This is required for image-text-to-text models."
-    #     )
+    # Make sure model has language_model as well as vision_tower:
+    if not hasattr(eager_model, "language_model"):
+        raise ValueError(
+            f"The model {model_name_or_path} does not have a `language_model` attribute. "
+            "This is required for audio-text-to-text or image-text-to-text models."
+        )
+    if not hasattr(eager_model, "audio_tower") or not hasattr(eager_model, "vision_tower"):
+        raise ValueError(
+            f"The model {model_name_or_path} does not have a `audio_model` or `vision_tower` attribute. "
+            "This is required for audio-text-to-text or image-text-to-text models."
+        )
     
     for param in eager_model.parameters():
         # Must disable gradient for quantized checkpoint
         if isinstance(param, torchao.utils.TorchAOBaseTensor):
             param.requires_grad = False
 
-    # TODO: Move quantization recipe out for better composability.
-    # TODO: Should switch to `TorchAoConfig` once the quant issue on final lm_head layer is fixed.
-    if qlinear_config or qembedding_config:
-        # TODO: Update torchao to use 0.11.0 once released
-        if parse(torchao.__version__) < parse("0.11.0.dev0"):
-            raise RuntimeError("Quantization 8da4w requires torchao >= 0.11.0. Please upgrade torchao.")
-
-        from torchao.quantization.granularity import PerAxis, PerGroup
-        from torchao.quantization.quant_api import (
-            Int8DynamicActivationIntxWeightConfig,
-            IntxWeightOnlyConfig,
-            quantize_,
-        )
-        from torchao.utils import unwrap_tensor_subclass
-
-        if qembedding_config:
-            logging.info("Quantizing embedding layers.")
-            # TODO: Should switch to `AOPerModuleConfig` once fix for tied weights is available.
-            embedding_config = IntxWeightOnlyConfig(
-                weight_dtype=torch.int8,
-                granularity=PerAxis(0),
-            )
-            quantize_(
-                eager_model.language_model,
-                embedding_config,
-                lambda m, fqn: isinstance(m, torch.nn.Embedding),
-            )
-
-        if qlinear_config:
-            logging.info("Quantizing linear layers.")
-            linear_config = Int8DynamicActivationIntxWeightConfig(
-                weight_dtype=torch.int4,
-                weight_granularity=PerGroup(32),
-            )
-            quantize_(
-                eager_model.language_model,
-                linear_config,
-            )
-
-        unwrap_tensor_subclass(eager_model)
+    qlinear_config = kwargs.get("qlinear", None)
+    qembedding_config = kwargs.get("qembedding", None)
+    quantize_model_(eager_model.language_model, qlinear_config=qlinear_config, qembedding_config=qembedding_config)
+    # Skip embedding quantization for now.
+    quantize_model_(eager_model.audio_tower, qlinear_config=qlinear_config)
 
     return MultiModalTextToTextExportableModule(eager_model, use_custom_kv_cache, use_custom_sdpa)

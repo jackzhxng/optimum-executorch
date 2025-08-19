@@ -34,7 +34,7 @@ from optimum.utils.import_utils import is_transformers_version
 from optimum.executorch import ExecuTorchModelForMultiModalToText
 from optimum.exporters.executorch.tasks.multimodal_text_to_text import load_multimodal_text_to_text_model
 
-from ..utils import check_causal_lm_output_quality
+from ..utils import check_causal_lm_output_quality, check_multimodal_output_quality
 
 
 is_linux_ci = sys.platform.startswith("linux") and os.environ.get("GITHUB_ACTIONS") == "true"
@@ -142,13 +142,13 @@ class ExecuTorchModelIntegrationTest(unittest.TestCase):
         output = tokenizer.decode(tokens, skip_special_tokens=True)
         self.assertTrue(output.startswith("The audio features a conversation between two individuals, likely friends or acquaintances, who are discussing a series of tattoos."))
 
-    @slow
-    @pytest.mark.run_slow
-    @pytest.mark.skipif(
-        parse(transformers.__version__) < parse("4.53.0.dev0") or parse(torchao.__version__) < parse("0.11.0"),
-        reason="Only available on transformers >= 4.53.0.dev0 and torchao >= 0.11.0",
-    )
-    @pytest.mark.skipif(is_linux_ci, reason="OOM on linux runner")
+    # @slow
+    # @pytest.mark.run_slow
+    # @pytest.mark.skipif(
+    #     parse(transformers.__version__) < parse("4.53.0.dev0") or parse(torchao.__version__) < parse("0.11.0"),
+    #     reason="Only available on transformers >= 4.53.0.dev0 and torchao >= 0.11.0",
+    # )
+    # @pytest.mark.skipif(is_linux_ci, reason="OOM on linux runner")
     def test_voxtral_audio_text_to_text_generation_with_custom_sdpa_kv_cache_8da4w_8we_pte(self):
         model_id = "mistralai/Voxtral-Mini-3B-2507"
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -180,8 +180,18 @@ class ExecuTorchModelIntegrationTest(unittest.TestCase):
             processor=processor,
             tokenizer=tokenizer,
             input_conversation=conversation,
-            max_seq_len=64,
+            max_seq_len=1160,
         )
-        print(generated_text)
-        breakpoint()
+        logging.info(f"\nGenerated text:\n\t{generated_text}")
+        generated_tokens = tokenizer(generated_text, return_tensors="pt").input_ids
+        # Should be something like: 'The audio is a humorous conversation between two people,
+        # likely friends or acquaintances, who are discussing tattoos.'
+        
+        del model
+        del tokenizer
+        gc.collect()
+
+        self.assertTrue(check_multimodal_output_quality(model_id, generated_tokens, conversation))
+        self.assertTrue("tattoo" in generated_text)
+
 
