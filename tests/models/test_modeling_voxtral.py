@@ -89,7 +89,7 @@ class ExecuTorchModelIntegrationTest(unittest.TestCase):
                 .forward(
                     input_features=inputs["input_features"],
                 )
-            )
+            ).squeeze(dim=0)
 
         audio_token_mask = inputs["input_ids"] == config.audio_token_id
         token_embeddings[audio_token_mask] = audio_embeddings
@@ -212,7 +212,7 @@ class ExecuTorchModelIntegrationTest(unittest.TestCase):
                     input_features=input_features,
                 )
             )
-        audio_embeddings = audio_embeddings.unsqueeze(0)  # Unsqueeze from (1125, 3072) to (1, 1125, 3072)
+        # audio_embeddings = audio_embeddings.unsqueeze(0)  # Unsqueeze from (1125, 3072) to (1, 1125, 3072)
         audio_embeddings_len = audio_embeddings.shape[1]
         logits = (
             ep["decoder"]

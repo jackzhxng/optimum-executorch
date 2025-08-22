@@ -1030,6 +1030,7 @@ class ExecuTorchModelForSpeechSeq2Seq(ExecuTorchModelBase):
         self.stats.on_model_execution_start()
         if is_first_prediction:
             encoder_outputs = self.encoder.forward((input_features,))[0]
+            encoder_outputs = encoder_outputs.squeeze(dim=0)
             self.stats.on_prompt_eval_end()
 
         result = (self.decoder.forward((decoder_input_ids, encoder_outputs, cache_position))[0], encoder_outputs)
